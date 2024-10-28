@@ -1,0 +1,24 @@
+# Node modules
+node_modules/
+
+# TypeScript output
+dist/
+
+# Environment variables
+*.env
+!src/config/production.env
+!src/config/development.env
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript specific files
+*.tsbuildinfo
+
+# OS generated files
+.DS_Store
+Thumbs.db

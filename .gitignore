@@ -6,8 +6,9 @@ dist/
 
 # Environment variables
 *.env
-!src/config/production.env
-!src/config/development.env
+!src/configs/production.env
+!src/configs/development.env
+src/configs/*.json
 
 # Logs
 *.log

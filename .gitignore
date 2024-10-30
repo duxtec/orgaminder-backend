@@ -8,6 +8,7 @@ dist/
 *.env
 !src/configs/production.env
 !src/configs/development.env
+!src/configs/app.env
 src/configs/*.json
 
 # Logs

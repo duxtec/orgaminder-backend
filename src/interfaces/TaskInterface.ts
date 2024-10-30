@@ -1,7 +1,7 @@
 import TaskStatusType from '@app/types/TaskStatusType';
 
 interface TaskInterface {
-    id: number;
+    id: string;
     title: string;
     description: string;
     status: TaskStatusType

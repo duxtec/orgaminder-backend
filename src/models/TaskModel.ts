@@ -1,10 +1,12 @@
-import admin from '@app/firebase/admin';
-import TaskInterface from '@app/interfaces/TaskInterface';
-import TaskStatusType from '@app/types/TaskStatusType';
+import TaskInvalidError from "@app/errors/TaskInvalidError";
+import admin from "@app/firebase/admin";
+import TaskInterface from "@app/interfaces/TaskInterface";
+import TaskStatusType from "@app/types/TaskStatusType";
+import validateTask from "@app/utils/validators/validateTask";
 
 /**
  * TaskModel represents a task in the application.
- * It implements the TaskInterface and provides methods to interact 
+ * It implements the TaskInterface and provides methods to interact
  * with the Firestore database for task-related operations.
  */
 class TaskModel implements TaskInterface {
@@ -13,6 +15,7 @@ class TaskModel implements TaskInterface {
     description: string;
     status: TaskStatusType;
     dueDate: Date;
+    userIds: [string];
 
     /**
      * Creates an instance of TaskModel.
@@ -24,6 +27,21 @@ class TaskModel implements TaskInterface {
         this.description = data.description;
         this.status = data.status;
         this.dueDate = data.dueDate;
+        this.userIds = data.userIds;
+    }
+
+    static async existCollection() {
+        const tasksCollectionRef = admin.firestore().collection("tasks");
+        try {
+            const tasksSnapshot = await tasksCollectionRef.get();
+
+            if (tasksSnapshot.empty) {
+                return false;
+            }
+            return true;
+        } catch (error) {
+            return false;
+        }
     }
 
     /**
@@ -31,11 +49,14 @@ class TaskModel implements TaskInterface {
      * @param data - The task data excluding the 'id'.
      * @returns A promise that resolves to the newly created TaskModel instance.
      */
-    static async create(data: Omit<TaskInterface, 'id'>): Promise<TaskModel> {
-        const newId = await TaskModel.getNextId(); // Gets the next numeric ID
-        const taskData = { ...data, id: newId };
-        
-        await admin.firestore().collection('tasks').doc(newId.toString()).set(taskData);
+    static async create(data: Omit<TaskInterface, "id">): Promise<TaskModel> {
+        const newId = await TaskModel.getNextId();
+        const taskData: TaskInterface = { ...data, id: newId };
+
+        if (!validateTask(taskData)) {
+            throw new TaskInvalidError();
+        }
+        await admin.firestore().collection("tasks").doc(newId).set(taskData);
         return new TaskModel(taskData);
     }
 
@@ -46,35 +67,33 @@ class TaskModel implements TaskInterface {
     static async getNextId(): Promise<string> {
         const today = new Date();
         const yy = today.getFullYear().toString().slice(-2);
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
+        const mm = String(today.getMonth() + 1).padStart(2, "0");
+        const dd = String(today.getDate()).padStart(2, "0");
         const datePrefix = `${yy}${mm}${dd}`;
 
-        // Searches for the task with the highest ID that starts with today's date
-        const tasksSnapshot = await admin.firestore()
-            .collection('tasks')
-            .orderBy(admin.firestore.FieldPath.documentId())
-            .startAt(datePrefix)
-            .endAt(`${datePrefix}\uf8ff`)
-            .limit(1)
+        if (!(await TaskModel.existCollection())) {
+            return `${datePrefix}001`;
+        }
+
+        const dailyTasksSnapshot = await admin
+            .firestore()
+            .collection("tasks")
+            .where(admin.firestore.FieldPath.documentId(), ">=", datePrefix)
             .get();
 
-        let maxId = '';
+        let maxdayId = 0;
 
-        // Checks if any document was returned
-        if (!tasksSnapshot.empty) {
-            maxId = tasksSnapshot.docs[0].id; // Gets the highest ID found
-        }
+        dailyTasksSnapshot.forEach((doc) => {
+            const id = parseInt(doc.id.slice(6), 10);
 
-        let nextIncrement = 1; // Default value if no tasks for the day
+            if (!maxdayId || id > maxdayId) {
+                maxdayId = id;
+            }
+        });
 
-        if (maxId) {
-            // If there is already an ID for today, gets the increment
-            const lastIncrement = parseInt(maxId.slice(8), 10); // Gets the increment part of the highest ID
-            nextIncrement = lastIncrement + 1; // Increments
-        }
+        const nextIncrement = maxdayId + 1;
 
-        const newId = `${datePrefix}${String(nextIncrement).padStart(3, '0')}`; // Creates the new ID
+        const newId = `${datePrefix}${String(nextIncrement).padStart(3, "0")}`;
         return newId;
     }
 
@@ -83,13 +102,56 @@ class TaskModel implements TaskInterface {
      * @param id - The ID of the task to fetch.
      * @returns A promise that resolves to the TaskModel instance or null if not found.
      */
-    static async fetch(id: number): Promise<TaskModel | null> {
-        const docRef = admin.firestore().collection('tasks').doc(id.toString());
+    static async fetch(id: string): Promise<TaskModel | null> {
+        const docRef = admin.firestore().collection("tasks").doc(id);
         const docSnap = await docRef.get();
         if (docSnap.exists) {
-            return new TaskModel({ id: docSnap.data()?.id, ...docSnap.data() } as TaskInterface);
+            return new TaskModel({
+                id: docSnap.data()?.id,
+                ...docSnap.data(),
+            } as TaskInterface);
         }
         return null; // Returns null if the task is not found
+    }
+
+    /**
+     * Fetches all tasks from Firestore.
+     * @returns A promise that resolves to an array of TaskModel instances.
+     */
+    static async fetchAll(): Promise<TaskModel[]> {
+        if (!(await TaskModel.existCollection())) {
+            return [];
+        }
+        const snapshot = await admin.firestore().collection("tasks").get();
+        const tasks: TaskModel[] = [];
+
+        snapshot.forEach((doc) => {
+            tasks.push(
+                new TaskModel({ id: doc.id, ...doc.data() } as TaskInterface)
+            );
+        });
+
+        return tasks;
+    }
+
+    static async fetchByUserId(userId: string): Promise<TaskModel[]> {
+        if (!(await TaskModel.existCollection())) {
+            return [];
+        }
+        const snapshot = await admin
+            .firestore()
+            .collection("tasks")
+            .where("userIds", "array-contains", userId)
+            .get();
+        const tasks: TaskModel[] = [];
+
+        snapshot.forEach((doc) => {
+            tasks.push(
+                new TaskModel({ id: doc.id, ...doc.data() } as TaskInterface)
+            );
+        });
+
+        return tasks;
     }
 
     /**
@@ -97,10 +159,16 @@ class TaskModel implements TaskInterface {
      * @param data - An object containing the fields to update.
      * @returns A promise that resolves when the update is complete.
      */
-    async update(data: Partial<TaskInterface>): Promise<void> {
-        const docRef = admin.firestore().collection('tasks').doc(this.id.toString());
+    async update(data: Partial<TaskInterface>): Promise<boolean> {
+        const docRef = admin.firestore().collection("tasks").doc(this.id);
+        const docSnapshot = await docRef.get();
+
+        if (!docSnapshot.exists) {
+            return false;
+        }
         await docRef.update(data);
-        Object.assign(this, data); // Updates the local instance with the new data
+        Object.assign(this, data);
+        return true;
     }
 
     /**
@@ -108,9 +176,16 @@ class TaskModel implements TaskInterface {
      * @param id - The ID of the task to delete.
      * @returns A promise that resolves when the deletion is complete.
      */
-    static async delete(id: number): Promise<void> {
-        const docRef = admin.firestore().collection('tasks').doc(id.toString());
+    async delete(): Promise<boolean> {
+        const docRef = admin.firestore().collection("tasks").doc(this.id);
+        const docSnapshot = await docRef.get();
+
+        if (!docSnapshot.exists) {
+            return false;
+        }
+
         await docRef.delete();
+        return true;
     }
 }
 

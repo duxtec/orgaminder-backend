@@ -1,19 +1,19 @@
-import admin from '@app/firebase/admin';
-import UserInterface from '@app/interfaces/UserInterface';
-import RoleType from '@app/types/RoleType';
+import admin from "@app/firebase/admin";
+import UserInterface from "@app/interfaces/UserInterface";
+import RoleType from "@app/types/RoleType";
 
 /**
  * UserModel represents a user in the application.
- * It implements the UserInterface and provides methods to interact 
+ * It implements the UserInterface and provides methods to interact
  * with the Firestore database for user-related operations.
  */
 class UserModel implements UserInterface {
     id: string;
-    email: string | null;
+    email?: string | null;
     displayName?: string | null;
     role: RoleType;
     photoURL?: string | null;
-    emailVerified: boolean;
+    emailVerified?: boolean;
 
     /**
      * Creates an instance of UserModel.
@@ -33,8 +33,8 @@ class UserModel implements UserInterface {
      * @param data - The user data excluding the 'id'.
      * @returns A promise that resolves to the newly created UserModel instance.
      */
-    static async create(data: Omit<UserInterface, 'id'>): Promise<UserModel> {
-        const userRef = await admin.firestore().collection('users').add(data);
+    static async create(data: Omit<UserInterface, "id">): Promise<UserModel> {
+        const userRef = await admin.firestore().collection("users").add(data);
         return new UserModel({ id: userRef.id, ...data });
     }
 
@@ -44,10 +44,13 @@ class UserModel implements UserInterface {
      * @returns A promise that resolves to the UserModel instance or null if not found.
      */
     static async fetch(id: string): Promise<UserModel | null> {
-        const docRef = admin.firestore().collection('users').doc(id);
+        const docRef = admin.firestore().collection("users").doc(id);
         const docSnap = await docRef.get();
         if (docSnap.exists) {
-            return new UserModel({ id: docSnap.id, ...docSnap.data() } as UserInterface);
+            return new UserModel({
+                id: docSnap.id,
+                ...docSnap.data(),
+            } as UserInterface);
         }
         return null; // Returns null if the user is not found
     }
@@ -58,7 +61,7 @@ class UserModel implements UserInterface {
      * @returns A promise that resolves when the update is complete.
      */
     async update(data: Partial<UserInterface>): Promise<void> {
-        const docRef = admin.firestore().collection('users').doc(this.id);
+        const docRef = admin.firestore().collection("users").doc(this.id);
         await docRef.update(data);
         Object.assign(this, data); // Updates the local instance with the new data
     }
@@ -69,7 +72,7 @@ class UserModel implements UserInterface {
      * @returns A promise that resolves when the deletion is complete.
      */
     static async delete(id: string): Promise<void> {
-        const docRef = admin.firestore().collection('users').doc(id);
+        const docRef = admin.firestore().collection("users").doc(id);
         await docRef.delete();
     }
 }

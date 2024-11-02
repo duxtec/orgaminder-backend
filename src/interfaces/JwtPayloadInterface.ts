@@ -1,11 +1,7 @@
-import RoleType from '@app/types/RoleType';
+import UserInterface from "@app/interfaces/UserInterface";
 
 interface JwtPayloadInterface {
-    User?: {
-        id: string;
-        role: RoleType;
-        email?: string | null;
-    } 
+    User?: UserInterface;
 }
 
 export default JwtPayloadInterface;
